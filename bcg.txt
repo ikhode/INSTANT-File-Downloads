@@ -1,0 +1,403 @@
+var config = {
+  // Configuración general
+  generalTitle: { label: "🎮 Configuración General", type: "title" },
+  baseBet: { label: "Apuesta base", value: 0.2, type: "number" },
+  maxBankroll: { label: "Porcentaje máximo de bankroll a arriesgar por sesión", value: 20, type: "number" },
+  
+  // Configuración de multiplicadores bajos (seguros)
+  lowTitle: { label: "🟢 Estrategia para multiplicadores bajos (seguros)", type: "title" },
+  useLowStrategy: { label: "Activar estrategia de multiplicadores bajos", value: true, type: "checkbox" },
+  lowTarget: { label: "Multiplicador objetivo", value: 1.5, type: "number" },
+  lowBetSize: { label: "% de apuesta base", value: 100, type: "number" },
+  
+  // Configuración de multiplicadores medios
+  mediumTitle: { label: "🟡 Estrategia para multiplicadores medios", type: "title" },
+  useMediumStrategy: { label: "Activar estrategia de multiplicadores medios", value: true, type: "checkbox" },
+  mediumTarget: { label: "Multiplicador objetivo", value: 5, type: "number" },
+  mediumBetSize: { label: "% de apuesta base", value: 25, type: "number" },
+  
+  // Configuración de multiplicadores altos
+  highTitle: { label: "🟠 Estrategia para multiplicadores altos", type: "title" },
+  useHighStrategy: { label: "Activar estrategia de multiplicadores altos", value: true, type: "checkbox" },
+  highTarget: { label: "Multiplicador objetivo", value: 50, type: "number" },
+  highBetSize: { label: "% de apuesta base", value: 10, type: "number" },
+  
+  // Configuración de multiplicadores muy altos
+  veryHighTitle: { label: "🔴 Estrategia para multiplicadores muy altos", type: "title" },
+  useVeryHighStrategy: { label: "Activar estrategia de multiplicadores muy altos", value: true, type: "checkbox" },
+  veryHighTarget: { label: "Multiplicador objetivo", value: 100, type: "number" },
+  veryHighBetSize: { label: "% de apuesta base", value: 5, type: "number" },
+  
+  // Configuración de multiplicadores extremos
+  extremeTitle: { label: "⚡ Estrategia para multiplicadores extremos", type: "title" },
+  useExtremeStrategy: { label: "Activar estrategia de multiplicadores extremos", value: true, type: "checkbox" },
+  extremeTarget: { label: "Multiplicador objetivo", value: 300, type: "number" },
+  extremeBetSize: { label: "% de apuesta base", value: 2, type: "number" },
+  
+  // Gestión de riesgo y ganancias
+  riskTitle: { label: "⚠️ Gestión de riesgo", type: "title" },
+  stopLoss: { label: "Detener después de pérdida de (unidades)", value: 100, type: "number" },
+  takeProfit: { label: "Detener después de ganancia de (unidades)", value: 200, type: "number" },
+  
+  // Análisis de patrones
+  analyticTitle: { label: "📊 Análisis de patrones", type: "title" },
+  analyzeHistory: { label: "Analizar historial para optimizar apuestas", value: true, type: "checkbox" },
+  historySize: { label: "Número de rondas a analizar", value: 20, type: "number" },
+  
+  // Configuración avanzada
+  advancedTitle: { label: "🔧 Configuración avanzada", type: "title" },
+  adaptiveBetting: { label: "Ajuste adaptativo de apuestas", value: true, type: "checkbox" },
+  betDelayMs: { label: "Retardo entre apuestas (ms)", value: 200, type: "number" },
+};
+
+function main() {
+  // Variables para seguimiento
+  var startBalance = currency.amount;
+  var currentBalance = startBalance;
+  var sessionProfit = 0;
+  var totalBets = 0;
+  var totalWins = 0;
+  var totalLosses = 0;
+  var biggestWin = 0;
+  var consecutiveWins = 0;
+  var consecutiveLosses = 0;
+  var gameHistoryData = [];
+  var strategyPerformance = {
+    low: { wins: 0, losses: 0, profit: 0 },
+    medium: { wins: 0, losses: 0, profit: 0 },
+    high: { wins: 0, losses: 0, profit: 0 },
+    veryHigh: { wins: 0, losses: 0, profit: 0 },
+    extreme: { wins: 0, losses: 0, profit: 0 }
+  };
+  
+  // Función para analizar el historial y detectar patrones
+  function analyzeHistory() {
+    if (!config.analyzeHistory.value || gameHistoryData.length < 5) return {};
+    
+    var recentHistory = gameHistoryData.slice(-config.historySize.value);
+    var analysis = {
+      averageCrash: 0,
+      lowFrequency: 0,
+      mediumFrequency: 0,
+      highFrequency: 0,
+      veryHighFrequency: 0,
+      extremeFrequency: 0,
+      pattern: "normal"
+    };
+    
+    // Calcular estadísticas
+    var sum = 0;
+    recentHistory.forEach(function(crash) {
+      sum += crash;
+      if (crash < 2) analysis.lowFrequency++;
+      else if (crash < 10) analysis.mediumFrequency++;
+      else if (crash < 50) analysis.highFrequency++;
+      else if (crash < 100) analysis.veryHighFrequency++;
+      else analysis.extremeFrequency++;
+    });
+    
+    analysis.averageCrash = sum / recentHistory.length;
+    
+    // Detectar patrones
+    if (analysis.lowFrequency > recentHistory.length * 0.7) {
+      analysis.pattern = "low_streak";
+    } else if (analysis.highFrequency + analysis.veryHighFrequency + analysis.extremeFrequency > recentHistory.length * 0.3) {
+      analysis.pattern = "high_opportunity";
+    }
+    
+    log.info("📊 Análisis: Media de crash " + analysis.averageCrash.toFixed(2) + "x | Patrón: " + analysis.pattern);
+    return analysis;
+  }
+  
+  // Función para determinar el tamaño óptimo de las apuestas
+  function optimizeBetSizes(analysis) {
+    if (!config.adaptiveBetting.value) return;
+    
+    var adjustments = {
+      low: 1,
+      medium: 1,
+      high: 1,
+      veryHigh: 1,
+      extreme: 1
+    };
+    
+    // Ajustar según patrones detectados
+    if (analysis.pattern === "low_streak") {
+      adjustments.low = 1.5;
+      adjustments.medium = 0.7;
+      adjustments.high = 0.5;
+      adjustments.veryHigh = 0.3;
+      adjustments.extreme = 0.2;
+    } else if (analysis.pattern === "high_opportunity") {
+      adjustments.low = 0.5;
+      adjustments.medium = 0.8;
+      adjustments.high = 1.2;
+      adjustments.veryHigh = 1.5;
+      adjustments.extreme = 2;
+    }
+    
+    return adjustments;
+  }
+  
+  // Función para calcular el rendimiento de cada estrategia
+  function calculateStrategyROI() {
+    var results = {};
+    
+    for (var strategy in strategyPerformance) {
+      var data = strategyPerformance[strategy];
+      var totalBets = data.wins + data.losses;
+      var winRate = totalBets > 0 ? (data.wins / totalBets) * 100 : 0;
+      var roi = totalBets > 0 ? (data.profit / totalBets) : 0;
+      
+      results[strategy] = {
+        totalBets: totalBets,
+        winRate: winRate,
+        roi: roi
+      };
+    }
+    
+    return results;
+  }
+  
+  // Función para mostrar estadísticas
+  function showStats() {
+    sessionProfit = currency.amount - startBalance;
+    var profitPercentage = (sessionProfit / startBalance) * 100;
+    var winRate = totalBets > 0 ? (totalWins / totalBets) * 100 : 0;
+    
+    log.info("════════════════════════════════════");
+    log.info("📈 ESTADÍSTICAS DE LA SESIÓN");
+    log.info("════════════════════════════════════");
+    log.info("💰 Balance: " + currency.amount.toFixed(2) + " " + currency.currencyName);
+    
+    if (sessionProfit > 0) {
+      log.success("✅ Ganancia: +" + sessionProfit.toFixed(2) + " (" + profitPercentage.toFixed(2) + "%)");
+    } else {
+      log.error("❌ Ganancia: " + sessionProfit.toFixed(2) + " (" + profitPercentage.toFixed(2) + "%)");
+    }
+    
+    log.info("🎲 Apuestas totales: " + totalBets);
+    log.info("🏆 Tasa de victoria: " + winRate.toFixed(2) + "%");
+    log.info("🔄 Racha actual: " + (consecutiveWins > 0 ? "+" + consecutiveWins + " victorias" : "-" + consecutiveLosses + " derrotas"));
+    log.info("💎 Mayor ganancia: " + biggestWin.toFixed(2));
+    
+    // Mostrar rendimiento por estrategia
+    var roi = calculateStrategyROI();
+    log.info("════════════════════════════════════");
+    log.info("📊 RENDIMIENTO POR ESTRATEGIA");
+    log.info("════════════════════════════════════");
+    
+    for (var strategy in roi) {
+      var data = roi[strategy];
+      if (data.totalBets > 0) {
+        var strategyName = "";
+        switch (strategy) {
+          case "low": strategyName = "🟢 Bajo"; break;
+          case "medium": strategyName = "🟡 Medio"; break;
+          case "high": strategyName = "🟠 Alto"; break;
+          case "veryHigh": strategyName = "🔴 Muy Alto"; break;
+          case "extreme": strategyName = "⚡ Extremo"; break;
+        }
+        
+        log.info(strategyName + ": " + data.totalBets + " apuestas, " + data.winRate.toFixed(2) + "% aciertos, ROI: " + data.roi.toFixed(2));
+      }
+    }
+  }
+  
+  // Función para verificar límites de stop loss y take profit
+  function checkLimits() {
+    sessionProfit = currency.amount - startBalance;
+    
+    if (sessionProfit <= -config.stopLoss.value) {
+      log.error("🛑 Se alcanzó el límite de pérdida. Deteniendo el script.");
+      showStats();
+      game.stop();
+      return true;
+    }
+    
+    if (sessionProfit >= config.takeProfit.value) {
+      log.success("🎉 ¡Se alcanzó el objetivo de ganancia! Deteniendo el script.");
+      showStats();
+      game.stop();
+      return true;
+    }
+    
+    return false;
+  }
+  
+  // Función principal para realizar apuestas
+  function placeBets() {
+    // Verificar límites primero
+    if (checkLimits()) return;
+    
+    // Actualizar balance actual
+    currentBalance = currency.amount;
+    
+    // Analizar el historial
+    var analysis = analyzeHistory();
+    var betAdjustments = optimizeBetSizes(analysis);
+    
+    // Preparar las apuestas para esta ronda
+    var bets = [];
+    
+    // Apuesta para multiplicadores bajos
+    if (config.useLowStrategy.value) {
+      var lowBetAmount = (config.baseBet.value * config.lowBetSize.value / 100);
+      if (betAdjustments) lowBetAmount *= betAdjustments.low;
+      lowBetAmount = Math.max(lowBetAmount, currency.minAmount);
+      
+      bets.push({
+        amount: lowBetAmount,
+        payout: config.lowTarget.value,
+        type: "low"
+      });
+    }
+    
+    // Apuesta para multiplicadores medios
+    if (config.useMediumStrategy.value) {
+      var mediumBetAmount = (config.baseBet.value * config.mediumBetSize.value / 100);
+      if (betAdjustments) mediumBetAmount *= betAdjustments.medium;
+      mediumBetAmount = Math.max(mediumBetAmount, currency.minAmount);
+      
+      bets.push({
+        amount: mediumBetAmount,
+        payout: config.mediumTarget.value,
+        type: "medium"
+      });
+    }
+    
+    // Apuesta para multiplicadores altos
+    if (config.useHighStrategy.value) {
+      var highBetAmount = (config.baseBet.value * config.highBetSize.value / 100);
+      if (betAdjustments) highBetAmount *= betAdjustments.high;
+      highBetAmount = Math.max(highBetAmount, currency.minAmount);
+      
+      bets.push({
+        amount: highBetAmount,
+        payout: config.highTarget.value,
+        type: "high"
+      });
+    }
+    
+    // Apuesta para multiplicadores muy altos
+    if (config.useVeryHighStrategy.value) {
+      var veryHighBetAmount = (config.baseBet.value * config.veryHighBetSize.value / 100);
+      if (betAdjustments) veryHighBetAmount *= betAdjustments.veryHigh;
+      veryHighBetAmount = Math.max(veryHighBetAmount, currency.minAmount);
+      
+      bets.push({
+        amount: veryHighBetAmount,
+        payout: config.veryHighTarget.value,
+        type: "veryHigh"
+      });
+    }
+    
+    // Apuesta para multiplicadores extremos
+    if (config.useExtremeStrategy.value) {
+      var extremeBetAmount = (config.baseBet.value * config.extremeBetSize.value / 100);
+      if (betAdjustments) extremeBetAmount *= betAdjustments.extreme;
+      extremeBetAmount = Math.max(extremeBetAmount, currency.minAmount);
+      
+      bets.push({
+        amount: extremeBetAmount,
+        payout: config.extremeTarget.value,
+        type: "extreme"
+      });
+    }
+    
+    // Verificar que tenemos suficiente saldo para las apuestas
+    var totalBetAmount = bets.reduce(function(sum, bet) {
+      return sum + bet.amount;
+    }, 0);
+    
+    if (totalBetAmount > currency.amount) {
+      log.error("⚠️ No hay suficiente saldo para realizar todas las apuestas. Reduciendo proporcionalmente.");
+      var reductionFactor = currency.amount / totalBetAmount * 0.95; // 5% buffer
+      
+      bets.forEach(function(bet) {
+        bet.amount *= reductionFactor;
+        bet.amount = Math.max(bet.amount, currency.minAmount);
+      });
+    }
+    
+    // Realizar las apuestas
+    var betPromises = [];
+    bets.forEach(function(bet) {
+      log.info("🎯 Apostando " + bet.amount.toFixed(2) + " " + currency.currencyName + " a " + bet.payout + "x");
+      betPromises.push(
+        game.bet(bet.amount, bet.payout).then(function(payout) {
+          // Procesar resultado de la apuesta
+          totalBets++;
+          
+          if (payout > 1) {
+            // Ganamos
+            var winAmount = bet.amount * payout - bet.amount;
+            strategyPerformance[bet.type].wins++;
+            strategyPerformance[bet.type].profit += winAmount;
+            totalWins++;
+            consecutiveWins++;
+            consecutiveLosses = 0;
+            
+            if (winAmount > biggestWin) {
+              biggestWin = winAmount;
+            }
+            
+            log.success("✅ ¡Victoria! +" + winAmount.toFixed(2) + " con multiplicador " + bet.payout + "x");
+          } else {
+            // Perdimos
+            strategyPerformance[bet.type].losses++;
+            strategyPerformance[bet.type].profit -= bet.amount;
+            totalLosses++;
+            consecutiveLosses++;
+            consecutiveWins = 0;
+            
+            log.error("❌ Pérdida de " + bet.amount.toFixed(2) + " con multiplicador " + bet.payout + "x");
+          }
+          
+          return payout;
+        }).catch(function(error) {
+          log.error("⚠️ Error en la apuesta: " + error.message);
+        })
+      );
+    });
+    
+    // Esperar a que todas las apuestas se completen
+    Promise.all(betPromises).then(function() {
+      // Registrar multiplicador de crash
+      if (game.history && game.history.length > 0) {
+        var crashPoint = game.history[0].crashPoint;
+        gameHistoryData.push(crashPoint);
+        log.info("💥 Crash en: " + crashPoint + "x");
+      }
+      
+      // Mostrar estadísticas cada 5 rondas
+      if (totalBets % 5 === 0) {
+        showStats();
+      }
+    }).catch(function(error) {
+      log.error("⚠️ Error general: " + error.message);
+    });
+  }
+  
+  // Iniciar el ciclo de apuestas
+  game.onBet = function() {
+    // Pequeño retraso para asegurar que todo está listo
+    setTimeout(function() {
+      placeBets();
+    }, config.betDelayMs.value);
+  };
+  
+  // Mensaje de inicio
+  log.info("════════════════════════════════════");
+  log.info("🚀 ESTRATEGIA MULTI-MULTIPLICADOR INICIADA");
+  log.info("════════════════════════════════════");
+  log.info("💰 Balance inicial: " + startBalance.toFixed(2) + " " + currency.currencyName);
+  log.info("⚙️ Configuración cargada con " + 
+           (config.useLowStrategy.value ? "✅" : "❌") + " Bajo (" + config.lowTarget.value + "x), " +
+           (config.useMediumStrategy.value ? "✅" : "❌") + " Medio (" + config.mediumTarget.value + "x), " +
+           (config.useHighStrategy.value ? "✅" : "❌") + " Alto (" + config.highTarget.value + "x), " +
+           (config.useVeryHighStrategy.value ? "✅" : "❌") + " Muy Alto (" + config.veryHighTarget.value + "x), " +
+           (config.useExtremeStrategy.value ? "✅" : "❌") + " Extremo (" + config.extremeTarget.value + "x)");
+  log.info("🛡️ Stop Loss: " + config.stopLoss.value + " | Take Profit: " + config.takeProfit.value);
+  log.info("════════════════════════════════════");
+}
